@@ -12,6 +12,39 @@ from notebooks.src.config import DADOS_GEO_MEDIAN, DADOS_LIMPOS, MODELO_FINAL
 def carregar_dados_limpos():
     return pd.read_parquet(DADOS_LIMPOS)
 
+    # Explode MultiPolygons into individual polygons
+    gdf_geo = gdf_geo.explode(ignore_index=True)
+
+    # Function to check and fix invalid geometries
+    def fix_and_orient_geometry(geometry):
+        if not geometry.is_valid:
+            geometry = geometry.buffer(0)  # Fiz invalid geometry
+        # Orient the polygon to be counter-clockwise if it's a polygon or multipolygon
+        if isinstance(
+                geometry, (shapely.geometry.Polygon, shapely.geometry.MultiPolygon)
+        ):
+            geometry = shapely.geometry.polygon.orient(geometry, sign=1.0)
+        return geometry
+
+    # Apply the fix and orientation function to geometries
+    gdf_geo['geometry'] = gdf_geo['geometry'].apply(fix_and_orient_geometry)
+
+    # Extract polygon coordinates
+    def get_polygon_coordinates(geometry):
+        return (
+            [[[x, y] for x, y in geometry.exterior.coords]]
+            if isinstance(geometry, shapely.geometry.Polygon)
+            else [
+                [[x, y] for x, y in polygon.exterior.coords]
+                for polygon in geometry.geoms
+            ]
+        )
+
+    # Apply the coordinate conversion and store in a new column
+    gdf_geo['geometry'] = gdf_geo['geometry'].apply(get_polygon_coordinates)
+
+    return gdf_geo
+
 @st.cache_data
 def carregar_dados_geo():
     return gpd.read_parquet(DADOS_GEO_MEDIAN)
